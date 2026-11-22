@@ -102,12 +102,12 @@ for (cc in names(cor_map)) {
   })
 }
 method_specs[["MERF"]] <- list(
-  fit  = function(d) fit_smerf(d, ntree = 100),                       # sto = "none"
-  pred = function(m, d) pred_smerf(m, d)
+  fit  = function(d) fit_merf(d, ntree = 100),                       # sto = "none"
+  pred = function(m, d) pred_merf(m, d)
 )
 method_specs[["REEMforest"]] <- list(
-  fit  = function(d) fit_sreemf(d, ntree = 100, iter = 50, delta = 0.01),  # sto = "none"
-  pred = function(m, d) pred_sreemf(m, d)
+  fit  = function(d) fit_reemf(d, ntree = 100, iter = 50, delta = 0.01),  # sto = "none"
+  pred = function(m, d) pred_reemf(m, d)
 )
 method_specs[["GPBoost"]] <- list(
   fit  = function(d) fit_gpboost(d, response_type = "reg"),

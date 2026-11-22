@@ -5,6 +5,16 @@ library(fastDummies)       # dummy_cols()
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 source("real_function.R")
 
+# ── 0. 選擇要跑的方法 ─────────────────────────────────────────────────
+methods <- c("GEE", "GEEBM", "REEMF", "MERF", "GPBoost")
+
+
+# GEE / GEEBM 的 working correlation："independence"、"ar1"、"unstructured"
+corstr_use  <- "independence"
+
+cat("本次執行的方法：", paste(methods, collapse = ", "), "\n")
+
+
 # ── 1. 載入並清理 nlswork ────────────────────────────────────────────
 data(nlswork)
 
@@ -103,10 +113,45 @@ formula_all <- as.formula(
   paste("Y ~", paste(x_vars, collapse = " + "))
 )
 
-# ── 2. 模擬設定（只保留重複次數）────────────────────────────────────
-times   <- 1
+
+# ── 2. 各方法的 fit + predict（回傳 test 預測值）─────────────────────
+run_funs <- list(
+  GEE = function(tr, te) {
+    m <- fit_gee(tr, family = gaussian, corstr = corstr_use)
+    predict(m, te)
+  },
+  GEEBM = function(tr, te) {
+    m <- geebm(
+      formula      = formula_all,
+      id           = "ID",
+      data         = tr,
+      iteration    = 100,
+      feature_rate = 1.0,
+      lrate        = 0.1,
+      corstr       = corstr_use,
+      family       = "gaussian"
+    )
+    predict.geebm(m, data = te)
+  },
+  # REEMforest, sto = "none", ntree = 100, iter = 50, delta = 0.01
+  REEMF = function(tr, te) {
+    m <- fit_reemf(tr, ntree = 100)
+    pred_reemf(m, te)
+  },
+  # MERF, sto = "none", ntree = 100
+  MERF = function(tr, te) {
+    m <- fit_merf(tr, ntree = 100)
+    pred_merf(m, te)
+  },
+  GPBoost = function(tr, te) {
+    m <- fit_gpboost(tr, response_type = "reg")
+    predict_gpboost(m, te)
+  }
+)
+
+# ── 3. 模擬設定（只保留重複次數）────────────────────────────────────
+times     <- 1
 base_seed <- 50   # 每次 split 使用 set.seed(base_seed + j)，確保可重現
-methods <- c("GEE", "GEEBM", "SMERF", "GPBoost")
 
 mse_results  <- matrix(NA, nrow = times, ncol = length(methods),
                        dimnames = list(NULL, methods))
@@ -115,7 +160,7 @@ mae_results  <- matrix(NA, nrow = times, ncol = length(methods),
 time_results <- matrix(NA, nrow = times, ncol = length(methods),
                        dimnames = list(NULL, methods))
 
-# ── 3. 重複模擬（只有 train/test split 是隨機的）────────────────────
+# ── 4. 重複模擬（只有 train/test split 是隨機的）────────────────────
 start_time <- Sys.time()
 
 for (j in 1:times) {
@@ -130,53 +175,21 @@ for (j in 1:times) {
   test_data  <- data[!data$ID %in% train_ids, ]
   actual_y   <- test_data$Y
   
-  # GEE
-  start_t <- Sys.time()
-  train_gee <- fit_gee(train_data, family = gaussian, corstr = "independence")
-  test_gee  <- predict(train_gee, test_data)
-  time_results[j, "GEE"] <- as.numeric(difftime(Sys.time(), start_t, units = "secs"))
-  
-  # # SREEMF (REEMforest, sto = "none", ntree = 100, iter = 50, delta = 0.01)
-  # start_t <- Sys.time()
-  # train_sreemf <- fit_sreemf(train_data, ntree = 100)
-  # test_sreemf  <- pred_sreemf(train_sreemf, test_data)
-  # time_results[j, "SREEMF"] <- as.numeric(difftime(Sys.time(), start_t, units = "secs"))
-  
-  # SMERF (MERF, sto = "none", ntree = 100)
-  start_t <- Sys.time()
-  train_smerf <- fit_smerf(train_data, ntree = 100)
-  test_smerf  <- pred_smerf(train_smerf, test_data)
-  time_results[j, "SMERF"] <- as.numeric(difftime(Sys.time(), start_t, units = "secs"))
-  
-  # GEEBM
-  start_t <- Sys.time()
-  train_geebm <- geebm(
-    formula      = formula_all,
-    id           = "ID",
-    data         = train_data,
-    iteration    = 100,
-    feature_rate = 1.0,
-    lrate        = 0.1,
-    corstr       = "independence",
-    family       = "gaussian"
-  )
-  test_geebm <- predict.geebm(train_geebm, data = test_data)
-  time_results[j, "GEEBM"] <- as.numeric(difftime(Sys.time(), start_t, units = "secs"))
-  
-  # GPBoost
-  start_t <- Sys.time()
-  train_gpboost <- fit_gpboost(train_data, response_type = "reg")
-  test_gpboost  <- predict_gpboost(train_gpboost, test_data)
-  time_results[j, "GPBoost"] <- as.numeric(difftime(Sys.time(), start_t, units = "secs"))
-  
-  # 計算 MSE / MAE
-  # all_preds <- list(GEE = test_gee, GEEBM = test_geebm,
-  #                   SREEMF = test_sreemf, SMERF = test_smerf, GPBoost = test_gpboost)
-  #nosreemf
-  all_preds <- list(GEE = test_gee, GEEBM = test_geebm,
-                     SMERF = test_smerf, GPBoost = test_gpboost)
+  # 只跑 methods 中選取的方法；某方法失敗時記為 NA，不中斷其他方法
   for (m in methods) {
-    met <- calculate_metrics(actual_y, all_preds[[m]])
+    cat("  執行", m, "...\n")
+    start_t <- Sys.time()
+    pred <- tryCatch(
+      as.numeric(run_funs[[m]](train_data, test_data)),
+      error = function(e) {
+        message("  ", m, " 失敗：", conditionMessage(e))
+        rep(NA_real_, nrow(test_data))
+      }
+    )
+    time_results[j, m] <- as.numeric(difftime(Sys.time(), start_t, units = "secs"))
+    
+    # 計算 MSE / MAE（只算選取的方法）
+    met <- calculate_metrics(actual_y, pred)
     mse_results[j, m] <- met["MSE"]
     mae_results[j, m] <- met["MAE"]
   }

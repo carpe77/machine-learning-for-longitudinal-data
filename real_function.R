@@ -3,7 +3,6 @@ library(gpboost)
 library(LongituRF)
 library(geepack)
 library(ggplot2)
-# Predictor columns: everything except ID, Y and Time (Time is only used as the `time` argument of MERF/REEMforest)
 get_x_cols <- function(d) setdiff(names(d), c("ID", "Y", "Time"))
 logistic <- function(x){ (1+exp(-x))^(-1) }
 
@@ -72,8 +71,8 @@ predict_gpboost <- function(model, df_test) {
   return(pred$response_mean)
 }
 
-#SREEMF
-fit_sreemf <- function(data, ntree = 100, iter = 50, delta = 0.01) {
+#REEMF
+fit_reemf <- function(data, ntree = 100, iter = 50, delta = 0.01) {
   
   X_cols <- get_x_cols(data)
   
@@ -101,8 +100,8 @@ fit_sreemf <- function(data, ntree = 100, iter = 50, delta = 0.01) {
   return(model)
 }
 
-#SMERF
-fit_smerf <- function(data, ntree = 100) {
+#MERF
+fit_merf <- function(data, ntree = 100) {
   
   X_cols <- get_x_cols(data)
   
@@ -282,8 +281,8 @@ geebm.importance.plot <- function(importance,filename="FeatureImportance.jpg"){
   return(Ypred)
 }
 
-# ── SREEMF 預測 ────────────────────────────────────────────────────────────
-pred_sreemf <- function(model, data) {
+# ── REEMF 預測 ────────────────────────────────────────────────────────────
+pred_reemf <- function(model, data) {
   
   X_cols <- get_x_cols(data)
   
@@ -300,8 +299,8 @@ pred_sreemf <- function(model, data) {
   )
 }
 
-# ── SMERF 預測 ─────────────────────────────────────────────────────────────
-pred_smerf <- function(model, data) {
+# ── MERF 預測 ─────────────────────────────────────────────────────────────
+pred_merf <- function(model, data) {
   
   X_cols <- get_x_cols(data)
   
