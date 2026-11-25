@@ -21,7 +21,7 @@ library(fastDummies)       # dummy_cols()
 if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
   setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 }
-function_file <- "real function.R"                       # 本機檔名（含空格）
+function_file <- "real_function.R"                       # 本機檔名（含空格）
 if (!file.exists(function_file)) function_file <- "real_function.R"
 source(function_file)    # get_x_cols, fit_*, pred_*, geebm, predict.geebm, calculate_metrics
 
@@ -75,7 +75,9 @@ set.seed(cv_seed)
 all_ids  <- unique(data$ID)
 fold_of  <- sample(rep(1:K, length.out = length(all_ids)))   # 各 fold 人數盡量相等
 fold_map <- data.frame(ID = all_ids, fold = fold_of)
-data$fold <- fold_map$fold[match(data$ID, fold_map$ID)]
+# fold 編號只放在獨立向量，不加進 data：data 的每個欄位（除 ID、Y、Time 外）
+# 都會被 get_x_cols() 當成 predictor，放進去會讓 fold 變成共變數
+fold_id <- fold_map$fold[match(data$ID, fold_map$ID)]
 
 write.csv(fold_map, file.path(out_dir, "cv_fold_assignment.csv"), row.names = FALSE)
 
@@ -155,8 +157,12 @@ rows <- list()
 total_start <- Sys.time()
 
 for (k in 1:K) {
-  train_data <- data[data$fold != k, ]
-  test_data  <- data[data$fold == k, ]
+  train_data <- data[fold_id != k, ]
+  test_data  <- data[fold_id == k, ]
+  
+  # 檢查：train/test 的 predictor 與全資料完全一致（防止多餘欄位混入）
+  stopifnot(identical(get_x_cols(train_data), x_vars),
+            identical(get_x_cols(test_data),  x_vars))
   
   # 檢查：subject-level split（train/test 無重疊 subject）
   stopifnot(length(intersect(train_data$ID, test_data$ID)) == 0)

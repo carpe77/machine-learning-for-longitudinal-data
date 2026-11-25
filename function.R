@@ -258,7 +258,9 @@ geebm <- function(formula, id, iteration=100, feature_rate=0.5, lrate=0.1, stand
   Features <- as.vector(all.vars(formula))[-1]  
   outcome  <- as.character(formula[[2]])     
   data <- subset(data,select=(c(Features,id,outcome))) 
-  data_d <- as.data.frame(model.matrix(~., data=data[Features]))  
+  mm_d    <- model.matrix(~., data = data[Features])
+  term_id <- attr(mm_d, "assign")   # model.matrix 每個欄位對應 Features 的第幾個變數（intercept = 0）
+  data_d  <- as.data.frame(mm_d)
   Features_d <- names(data_d)
   if(standardize==T){
     data_d[, !(names(data_d) %in% c(id,"(Intercept)"))]<-scale(data_d[, !(names(data_d) %in% c(id,"(Intercept)"))])
@@ -269,8 +271,9 @@ geebm <- function(formula, id, iteration=100, feature_rate=0.5, lrate=0.1, stand
   data_d <- cbind(data_d, PredValue)
   for (m in (1:iteration)){
     R <- as.numeric(sample(1:length(Features),size=(cround(feature_rate*length(Features))),replace=F))
-    R_name_d <- grep(paste(Features[R], collapse = "|"), colnames(data_d), value = TRUE)
-    data_rf_d <- data_d[,R_name_d]
+    # 以 assign 精確對應被抽中的變數（不再用 grep 部分比對，避免 x1 誤中 x10、age 誤中 age_sq）
+    R_name_d  <- Features_d[term_id %in% R]
+    data_rf_d <- data_d[, R_name_d, drop = FALSE]
     data_rf_d["Residual"] <- data_d[[outcome]]-data_d[["PredValue"]]
     data_rf_d <- cbind(data_rf_d,data_d[id[1]])
     modelGEEBM <- eval(parse(text = paste0(

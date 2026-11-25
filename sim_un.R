@@ -182,11 +182,7 @@ if (length(successful) < times) {
   })
   
 
-  on.exit({
-    if (exists("cl")) try(stopCluster(cl), silent = TRUE)
-    save_checkpoint()
-    cat("\n（已將目前進度存檔至", checkpoint_file, "）\n")
-  }, add = TRUE)
+  tryCatch({
   
   start_time <- Sys.time()
   batch_size <- n_cores  # 每批跑幾次就存一次檔，可自行調整
@@ -254,10 +250,13 @@ if (length(successful) < times) {
   }
   
   successful <- successful[1:times]
-  save_checkpoint()
   
-  stopCluster(cl)
-  on.exit(NULL)  # 已正常結束，取消上面 on.exit 裡重複的 stopCluster/存檔
+  }, finally = {
+    # 不論正常結束或中途出錯都會執行：關閉 cluster 並存檔（有錯誤時，之後仍會繼續往外拋出）
+    try(stopCluster(cl), silent = TRUE)
+    save_checkpoint()
+    cat("\n（已關閉 cluster，目前進度已存檔至", checkpoint_file, "）\n")
+  })
   
   end_time <- Sys.time()
   cat("\n總執行時間：", round(difftime(end_time, start_time, units = "mins"), 2), "分鐘\n")
